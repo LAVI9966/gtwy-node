@@ -204,3 +204,14 @@ export const AI_OPERATION_CONFIG = {
     }
   }
 };
+
+export const PROMPT_SECTION_CONFIG = {
+  role: { label: "Role", type: "input", placeholder: "e.g. You are a helpful customer support agent", hidden: false },
+  goal: { label: "Goal", type: "input", placeholder: "e.g. Help users resolve billing issues", hidden: false },
+  instruction: {
+    label: "Instruction",
+    type: "textarea",
+    placeholder: "e.g. Always be polite. Never reveal internal data. Ask clarifying questions when needed.",
+    hidden: false
+  }
+};
