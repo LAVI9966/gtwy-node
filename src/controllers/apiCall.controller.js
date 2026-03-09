@@ -2,7 +2,7 @@ import service from "../db_services/apiCall.service.js";
 import { validateRequiredParams } from "../services/utils/apiCall.utils.js";
 import ConfigurationServices from "../db_services/configuration.service.js";
 import Helper from "../services/utils/helper.utils.js";
-
+import { PROMPT_SECTION_CONFIG } from "../configs/constant.js";
 const getAllApiCalls = async (req, res, next) => {
   const org_id = req.profile?.org?.id;
   const folder_id = req.profile?.extraDetails?.folder_id || null;
@@ -202,7 +202,8 @@ const getAllInBuiltToolsController = async (req, res, next) => {
         description: "Allow models that support tool calling to search the web for the latest information before generating a response.",
         value: "Gtwy_Web_Search"
       }
-    ]
+    ],
+    prompt_section_config: PROMPT_SECTION_CONFIG
   };
   req.statusCode = 200;
   return next();
