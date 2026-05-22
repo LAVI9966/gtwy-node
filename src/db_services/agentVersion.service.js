@@ -316,10 +316,16 @@ function calculatePromptTokens(prompt, tools) {
   }
 }
 
-async function generateAgentSummary(org_id, version_id) {
+async function generateAndSaveAgentSummary(org_id, version_id, parent_id = null) {
   const summaryResult = await executeAiOperation({ body: { version_id } }, org_id, AI_OPERATION_CONFIG.generate_summary);
   const summary = summaryResult?.result;
-  return typeof summary === "string" ? summary : summary ? JSON.stringify(summary) : "";
+  const summaryStr = typeof summary === "string" ? summary : summary ? JSON.stringify(summary) : "";
+
+  if (parent_id && summaryStr) {
+    await configurationModel.updateOne({ _id: parent_id }, { $set: { bridge_summary: summaryStr } });
+  }
+
+  return summaryStr;
 }
 
 async function getPromptEnhancerPercentage(parentId, prompt) {
@@ -398,7 +404,6 @@ async function publish(org_id, version_id, user_id) {
 
   const publishedVersionId = getVersionData._id.toString();
   const previousPublishedVersionId = parentConfiguration.published_version_id;
-  const bridgeSummary = await generateAgentSummary(org_id, version_id);
 
   // Extract agent variables logic
   const prompt = convertPromptToString(getVersionData.configuration?.prompt || "");
@@ -421,7 +426,6 @@ async function publish(org_id, version_id, user_id) {
   const updatedConfiguration = { ...parentConfiguration, ...getVersionData };
   delete updatedConfiguration._id;
   updatedConfiguration.published_version_id = publishedVersionId;
-  updatedConfiguration.bridge_summary = bridgeSummary;
   delete updatedConfiguration.apiCalls; // Remove looked-up data
 
   const chatbotAutoAnswers = parentConfiguration.chatbot_auto_answers;
@@ -480,6 +484,7 @@ async function publish(org_id, version_id, user_id) {
   // Background tasks (after transaction to avoid write conflicts on configurationModel)
   makeQuestion(parentId, prompt, tools, true).catch(console.error);
   getPromptEnhancerPercentage(parentId, prompt).catch(console.error);
+  generateAndSaveAgentSummary(org_id, version_id, parentId).catch((err) => console.error("Background bridge summary generation failed:", err));
   // deleteCurrentTestcaseHistory(version_id).catch(console.error); // Implement if needed
 
   const cacheKeysToDelete = _buildCacheKeys(publishedVersionId, parentId, { bridges: [], versions: [] }, [], org_id);
@@ -539,7 +544,7 @@ async function getAllConnectedAgents(id, org_id, type) {
     const parentBridges = await configurationModel
       .find({
         org_id,
-        $or: [{ "connected_agents": { $exists: true } }]
+        $or: [{ connected_agents: { $exists: true } }]
       })
       .lean();
 
@@ -559,7 +564,7 @@ async function getAllConnectedAgents(id, org_id, type) {
     const parentVersions = await bridgeVersionModel
       .find({
         org_id,
-        $or: [{ "connected_agents": { $exists: true } }]
+        $or: [{ connected_agents: { $exists: true } }]
       })
       .lean();
 
