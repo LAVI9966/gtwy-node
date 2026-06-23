@@ -100,8 +100,12 @@ function normalizeForPublishCompare(agent = {}) {
 
   const normalized = {
     ...agent,
+<<<<<<< HEAD
     connected_agents:
       agent.connected_agents || agent.page_config?.connected_agents || agent.configuration?.connected_agents || {}
+=======
+    connected_agents: agent.connected_agents || agent.page_config?.connected_agents || agent.configuration?.connected_agents || {}
+>>>>>>> 5b002f77 (fix: one commit)
   };
 
   if (agent.configuration && typeof agent.configuration === "object") {
@@ -157,8 +161,12 @@ export function buildVersionUpdateHistoryEntries({ user_id, org_id, bridge_id, v
     if (key === "service") continue;
 
     if (key === "agents" && body.agents?.connected_agents) {
+<<<<<<< HEAD
       const before =
         version?.connected_agents || version?.page_config?.connected_agents || version?.configuration?.connected_agents || null;
+=======
+      const before = version?.connected_agents || version?.page_config?.connected_agents || version?.configuration?.connected_agents || null;
+>>>>>>> 5b002f77 (fix: one commit)
       const after = body.agents.connected_agents ?? null;
       if (!isEqual(before, after)) entries.push(historyEntry(base, "agents", before, after));
       continue;
@@ -221,6 +229,7 @@ export function buildPublishAttributionSnapshot(historyRows = []) {
   return snapshot;
 }
 
+<<<<<<< HEAD
 export function buildPublishHistoryEntry({
   user_id,
   org_id,
@@ -230,6 +239,9 @@ export function buildPublishHistoryEntry({
   publishedVersionId,
   snapshot
 }) {
+=======
+export function buildPublishHistoryEntry({ user_id, org_id, bridge_id, version_id, previousPublishedVersionId, publishedVersionId, snapshot }) {
+>>>>>>> 5b002f77 (fix: one commit)
   const changedKeys = Object.keys(snapshot || {});
 
   return {
