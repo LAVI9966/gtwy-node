@@ -667,6 +667,15 @@ const findHistoryByMessageId = async (message_id, agent_id) => {
   return result;
 };
 
+const findAllHistoryByMessageId = async (message_id, agent_id) => {
+  const whereConditions = { message_id };
+  if (agent_id) whereConditions.bridge_id = agent_id;
+  return models.pg.conversation_logs.findAll({
+    where: whereConditions,
+    order: [["id", "ASC"]]
+  });
+};
+
 async function updateStatus({ status, message_id }) {
   const [affectedCount, affectedRows] = await models.pg.conversation_logs.update(
     { user_feedback: status },
@@ -790,6 +799,7 @@ export {
   findThreadHistoryFormatted,
   findHistoryByMessageId,
   findHistoryByMessageId as getHistoryByMessageId,
+  findAllHistoryByMessageId,
   createConversationLog,
   findChatbotThreadHistory,
   findBatchConversationLogsByAgentId,

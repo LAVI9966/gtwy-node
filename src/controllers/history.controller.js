@@ -2,6 +2,7 @@ import {
   findConversationLogsByIds,
   findRecentThreadsByBridgeId,
   findHistoryByMessageId,
+  findAllHistoryByMessageId,
   findChatbotThreadHistory,
   findBatchConversationLogsByAgentId,
   findBatchConversationLogsCountByAgentId
@@ -150,10 +151,12 @@ const getRecursiveAgentHistory = async (req, res, next) => {
       return next();
     }
 
-    const resolveMessage = async (msgId, currentAgentId) => {
-      if (!msgId) return null;
+    const usedChildIds = new Set();
 
-      const messageRecord = await findHistoryByMessageId(msgId, currentAgentId);
+    const resolveMessage = async (msgId, currentAgentId, preloaded = null) => {
+      if (!msgId && !preloaded) return null;
+
+      const messageRecord = preloaded || (await findHistoryByMessageId(msgId, currentAgentId));
       if (!messageRecord) return null;
 
       const message = messageRecord?.toJSON ? messageRecord.toJSON() : messageRecord;
@@ -162,9 +165,14 @@ const getRecursiveAgentHistory = async (req, res, next) => {
         const metadata = tool?.data?.metadata;
         if (metadata?.type === "agent" && metadata?.message_id) {
           const childAgentId = metadata.agent_id || tool.bridge_id || tool.agent_id;
-          const fullChildMessage = await resolveMessage(metadata.message_id, childAgentId);
+          // Nested agent calls reuse message_id — match the row for this tool's query.
+          const rows = (await findAllHistoryByMessageId(metadata.message_id, childAgentId))
+            .map((r) => (r?.toJSON ? r.toJSON() : r))
+            .filter((r) => !usedChildIds.has(r.id));
+          const fullChildMessage = await resolveMessage(null, null, rows.find((r) => r.user === tool?.args?._query) || rows[0]);
 
           if (fullChildMessage) {
+            usedChildIds.add(fullChildMessage.id);
             fullChildMessage.name = tool?.name || null;
             if (!tool.data) {
               tool.data = {};
