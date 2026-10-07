@@ -10,8 +10,6 @@
  *                                                          `allowed_domains: null` in it receives them
  *       tool                                                a single tool entry used as-is
  *       { extra_body }                                      merged into extra_body (OpenRouter plugin)
- *     plus an optional `endpoint` ("/responses"): the path under the service's base_url that web search
- *     requests must go to, for providers that only serve web search there (Grok, MiniMax).
  *   - modelconfigurations.validationConfig.inbuilt_tools.web_search: whether a model supports it.
  *     This is now the only per-model switch in code (it replaces model-name prefixes and the
  *     "has tools" checks), so it is set here on every model that gets web search today, plus the
@@ -26,6 +24,11 @@
  *       minimax           -> MiniMax-M3 models (M2.x leak plugin_web_search instead of searching)
  *
  * The "Web Search" entry is also added to services.in_built_tools where missing so the UI offers it.
+ *
+ * Grok and MiniMax only offer web search on their Responses API, so they move to it entirely and run on
+ * the same pipeline as OpenAI (no request/response conversion): wire_format "openai_responses",
+ * service_keys mapping response_type -> text and max_tokens -> max_output_tokens, reasoning sent as the
+ * native `reasoning` field (reasoning_param_style null), and MiniMax's chat-only extra_body cleared.
  *
  * Models are selected by query rather than by name so the migration does the right thing in every
  * environment. Previous values are saved in the `migration_backups` collection so `down` restores
@@ -92,6 +95,20 @@ const WEB_SEARCH_IN_BUILT_TOOL = {
   value: "web_search"
 };
 
+// Services that move to the Responses API (wire_format openai_responses), with the request settings that
+// pipeline expects. service_keys are merged into the existing default mapping.
+const RESPONSES_API_SERVICES = {
+  grok: {
+    set: { wire_format: "openai_responses", reasoning_param_style: null },
+    service_keys: { response_type: "text", max_tokens: "max_output_tokens" }
+  },
+  minimax: {
+    set: { wire_format: "openai_responses", reasoning_param_style: null, extra_body: null, reasoning_extra_body: null },
+    service_keys: { response_type: "text", max_tokens: "max_output_tokens" }
+  }
+};
+const RESPONSES_API_FIELDS = ["wire_format", "reasoning_param_style", "extra_body", "reasoning_extra_body", "service_keys"];
+
 const SERVICE_WEB_SEARCH_TOOLS = {
   openai: {
     unfiltered: { type: "web_search_preview" },
@@ -108,10 +125,19 @@ const SERVICE_WEB_SEARCH_TOOLS = {
   grok: {
     unfiltered: { type: "web_search" },
     filtered: { type: "web_search", filters: { allowed_domains: null } },
-    max_domains: 5,
-    endpoint: "/responses"
+    max_domains: 5
   },
-  minimax: { unfiltered: { type: "web_search" }, endpoint: "/responses" }
+  minimax: { unfiltered: { type: "web_search" } }
+};
+
+const responsesApiSettings = (doc) => {
+  const target = RESPONSES_API_SERVICES[doc.service_name];
+  if (!target) return {};
+  const serviceKeys = doc.service_keys && typeof doc.service_keys === "object" ? doc.service_keys : {};
+  return {
+    ...target.set,
+    service_keys: { ...serviceKeys, default: { ...(serviceKeys.default || {}), ...target.service_keys } }
+  };
 };
 
 export const up = async (db) => {
@@ -152,13 +178,16 @@ export const up = async (db) => {
 
   const serviceDocs = await services
     .find({ service_name: { $in: Object.keys(SERVICE_WEB_SEARCH_TOOLS) } })
-    .project({ service_name: 1, in_built_tools: 1, web_search_tool: 1 })
+    .project({ service_name: 1, in_built_tools: 1, web_search_tool: 1, ...Object.fromEntries(RESPONSES_API_FIELDS.map((f) => [f, 1])) })
     .toArray();
 
   const serviceBackups = serviceDocs.map((doc) => ({
     service_name: doc.service_name,
     in_built_tools: doc.in_built_tools === undefined ? "__missing__" : doc.in_built_tools,
-    web_search_tool: doc.web_search_tool === undefined ? "__missing__" : doc.web_search_tool
+    web_search_tool: doc.web_search_tool === undefined ? "__missing__" : doc.web_search_tool,
+    ...(RESPONSES_API_SERVICES[doc.service_name]
+      ? Object.fromEntries(RESPONSES_API_FIELDS.map((f) => [f, doc[f] === undefined ? "__missing__" : doc[f]]))
+      : {})
   }));
 
   const serviceOps = serviceDocs.map((doc) => {
@@ -170,7 +199,8 @@ export const up = async (db) => {
         update: {
           $set: {
             in_built_tools: hasWebSearch ? inBuiltTools : [...inBuiltTools, WEB_SEARCH_IN_BUILT_TOOL],
-            web_search_tool: SERVICE_WEB_SEARCH_TOOLS[doc.service_name]
+            web_search_tool: SERVICE_WEB_SEARCH_TOOLS[doc.service_name],
+            ...responsesApiSettings(doc)
           }
         }
       }
@@ -217,7 +247,8 @@ export const down = async (db) => {
   const serviceOps = (backup.services || []).map((service) => {
     const $set = {};
     const $unset = {};
-    for (const field of ["in_built_tools", "web_search_tool"]) {
+    for (const field of ["in_built_tools", "web_search_tool", ...RESPONSES_API_FIELDS]) {
+      if (!(field in service)) continue;
       if (service[field] === "__missing__") $unset[field] = "";
       else $set[field] = service[field];
     }
