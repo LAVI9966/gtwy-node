@@ -187,7 +187,7 @@ const ssoLoginUrlController = async (req, res, next) => {
   const emailName = clean(email.split("@")[0], /[^A-Za-z]/g) || "User";
   const { data } = await createOrFindUserAndCompany({
     feature_id: process.env.PUBLIC_REFERENCEID,
-    Cuser: { email, name: clean(name, /[^A-Za-z ]/g) || emailName },
+    Cuser: { email, name: name || emailName },
     // Keep the company name stable per user: a different name creates a new company
     company: { name: clean(company_name, /[^A-Za-z0-9 ]/g) || `${emailName} Org` }
   });
