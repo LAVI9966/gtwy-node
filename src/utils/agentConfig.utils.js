@@ -166,9 +166,13 @@ const applyConnectedToolOperation = (current = [], tool, operation) => {
   if (entry.id == null) delete entry.id;
 
   if (op === "add") {
-    // Only one "post_tool" entry may exist at a time; adding a new one replaces the old.
-    const base = entry.type === "post_tool" ? current.filter((t) => t.type !== "post_tool") : current;
-    return [...base, entry];
+    // Adding an entry that already exists (same tool id, same pre-tool, or the single
+    // post_tool / built_in_tools entry) replaces it in place instead of appending a duplicate.
+    // A different post_tool replaces the old one outright so its fields do not leak over.
+    const index = current.findIndex((t) => isSameConnectedTool(t, tool));
+    if (index === -1) return [...current, entry];
+    const merge = (t) => (String(t.id) === String(entry.id) ? { ...t, ...entry } : entry);
+    return current.filter((t, i) => i === index || !isSameConnectedTool(t, tool)).map((t, i) => (i === index ? merge(t) : t));
   }
   if (op === "update") return current.map((t) => (isSameConnectedTool(t, tool) ? { ...t, ...entry } : t));
   if (op === "remove") return current.filter((t) => !isSameConnectedTool(t, tool));
