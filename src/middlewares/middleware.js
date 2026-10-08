@@ -684,8 +684,26 @@ const requireAdminRole = async (req, res, next) => {
   }
 };
 
+// SSO from an external app: verifies its HS256 JWT { email, name?, company_name? } signed with SSO_X_SECRET.
+const ssoAuth = async (req, res, next) => {
+  const token = req.get("Authorization")?.replace("Bearer ", "");
+  let payload;
+  try {
+    payload = jwt.verify(token, process.env.SSO_X_SECRET, { algorithms: ["HS256"], maxAge: "1h" });
+  } catch {
+    return res.status(401).json({ success: false, message: "Invalid or expired token" });
+  }
+  if (!payload.email) {
+    return res.status(401).json({ success: false, message: "email is required" });
+  }
+
+  req.ssoUser = { ...payload, email: payload.email.trim().toLowerCase() };
+  return next();
+};
+
 export {
   middleware,
+  ssoAuth,
   combine_middleware,
   EmbeddecodeToken,
   InternalAuth,

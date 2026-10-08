@@ -1,5 +1,5 @@
 import { generateIdentifier, generateAuthToken } from "../services/utils/utility.service.js";
-import { getOrganizationById, updateOrganizationData, createProxyToken } from "../services/proxy.service.js";
+import { getOrganizationById, updateOrganizationData, createProxyToken, createOrFindUserAndCompany } from "../services/proxy.service.js";
 import auth_service from "../db_services/auth.service.js";
 import jwt from "jsonwebtoken";
 
@@ -179,11 +179,35 @@ const generateLocalToken = async (req, res) => {
   return res.status(200).json({ success: true, token, proxy_auth_token });
 };
 
+// SSO from an external app: req.ssoUser is set by the ssoAuth middleware; returns a one-click GTWY login URL.
+const ssoLoginUrlController = async (req, res, next) => {
+  const { email, name, company_name } = req.ssoUser;
+  // MSG91 allows only letters/spaces in user names and letters/digits/spaces in company names
+  const clean = (value, pattern) => value?.replace(pattern, " ").replace(/\s+/g, " ").trim();
+  const emailName = clean(email.split("@")[0], /[^A-Za-z]/g) || "User";
+  const { data } = await createOrFindUserAndCompany({
+    feature_id: process.env.PUBLIC_REFERENCEID,
+    Cuser: { email, name: clean(name, /[^A-Za-z ]/g) || emailName },
+    // Keep the company name stable per user: a different name creates a new company
+    company: { name: clean(company_name, /[^A-Za-z0-9 ]/g) || `${emailName} Org` }
+  });
+  const user_id = data.user.id;
+  const company_id = data.company.id;
+  const proxy_auth_token = await createProxyToken({ user_id, company_id });
+
+  const params = new URLSearchParams({ proxy_auth_token, user_ref_id: user_id, company_ref_id: company_id });
+  const frontendUrl = process.env.ENVIROMENT?.trim().toUpperCase() == "TESTING" ? "https://dev.gtwy.ai" : "https://app.gtwy.ai";
+  res.locals = { success: true, url: `${frontendUrl}/login?${params}` };
+  req.statusCode = 200;
+  return next();
+};
+
 export {
   createAuthToken,
   saveAuthTokenInDbController,
   verifyAuthTokenController,
   getClientInfoController,
   getAuthTokenInDbController,
-  generateLocalToken
+  generateLocalToken,
+  ssoLoginUrlController
 };
